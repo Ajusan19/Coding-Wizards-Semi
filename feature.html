@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign Language Translator - SignTalkerz</title>
+  <link rel="shortcut icon" href="https://www.shutterstock.com/image-vector/mute-emoji-vector-icon-simple-260nw-1132736435.jpg" type="image/x-icon">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="feature.css">
+</head>
+<body>
+  <!-- Floating Background Animation -->
+  <div id="floating-symbols" class="floating-symbols"></div>
+
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="nav-logo">SignTalkerz</a>
+      <div class="nav-links">
+        <a href="index.html" class="nav-link">← Back to Home</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <div class="container">
+      <!-- Header Section -->
+      <div class="header-section">
+        <h1 class="main-title">AI Sign Language Translator</h1>
+        <p class="subtitle">Real-time gesture recognition powered by advanced AI</p>
+      </div>
+
+      <!-- Content Grid -->
+      <div class="content-grid">
+        <!-- Video Section -->
+        <div class="video-section">
+          <div class="video-wrapper">
+            <video id="webcam" autoplay playsinline muted hidden></video>
+            <img id="uploadedImage" hidden />
+            <canvas id="output_canvas"></canvas>
+
+            <div class="entry-buttons" id="entryButtons">
+              <div class="button-group">
+                <button class="primary-btn" onclick="startCamera()">
+                  <span class="btn-icon">📷</span>
+                  <span class="btn-text">Open Camera</span>
+                </button>
+                <button class="secondary-btn" onclick="openFile()">
+                  <span class="btn-icon">🖼️</span>
+                  <span class="btn-text">Upload Image</span>
+                </button>
+              </div>
+              <input type="file" id="fileInput" accept="image/*" hidden />
+            </div>
+
+            <!-- Loading Indicator -->
+            <div class="loading-indicator" id="loadingIndicator" hidden>
+              <div class="spinner"></div>
+              <p>Initializing camera...</p>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="controls" id="controls" hidden>
+            <button class="control-btn" onclick="resetApp()">
+              <span>🔄</span> Reset
+            </button>
+            <button class="control-btn" id="flipBtn" onclick="flipCamera()">
+              <span>📷</span> Flip Camera
+            </button>
+          </div>
+        </div>
+
+        <!-- Detection Results -->
+        <div class="detection-section">
+          <div class="detection-card">
+            <div class="detection-header">
+              <h2>Detection Results</h2>
+              <div class="status-indicator" id="statusIndicator">
+                <div class="status-dot"></div>
+                <span>Ready</span>
+              </div>
+            </div>
+
+            <div class="detection-content">
+              <div class="emoji-display">
+                <div id="detected-emoji" class="detected-emoji">🤔</div>
+                <div class="confidence-bar">
+                  <div class="confidence-fill" id="confidenceFill"></div>
+                </div>
+              </div>
+
+              <div class="detection-info">
+                <h3 id="detected-name" class="gesture-name">Waiting for Gesture...</h3>
+                <p id="translation-text" class="translation-text">Please show a recognized sign language gesture to begin translation.</p>
+              </div>
+            </div>
+
+            <!-- Gesture History -->
+            <div class="gesture-history" id="gestureHistory">
+              <h4>Recent Gestures</h4>
+              <div class="history-list" id="historyList">
+                <p class="no-history">No gestures detected yet</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Supported Gestures -->
+          <div class="supported-gestures">
+            <h3>Supported Gestures</h3>
+            <div class="gesture-grid">
+              <div class="gesture-item">
+                <span class="gesture-emoji">👍</span>
+                <span class="gesture-label">Thumbs Up</span>
+              </div>
+              <div class="gesture-item">
+                <span class="gesture-emoji">👌</span>
+                <span class="gesture-label">Nice</span>
+              </div>
+              <div class="gesture-item">
+                <span class="gesture-emoji">👋</span>
+                <span class="gesture-label">Wave</span>
+              </div>
+              <div class="gesture-item">
+                <span class="gesture-emoji">☝️</span>
+                <span class="gesture-label">Kill You</span>
+              </div>
+              <div class="gesture-item">
+                <span class="gesture-emoji">🤟</span>
+                <span class="gesture-label">Love You</span>
+              </div>
+              <div class="gesture-item">
+                <span class="gesture-emoji">🤙</span>
+                <span class="gesture-label">Hang Loose</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+  <script>
+    // Global variables
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const uploadedImageEl = document.getElementById('uploadedImage');
+    const entryButtons = document.getElementById('entryButtons');
+    const fileInput = document.getElementById('fileInput');
+    const controls = document.getElementById('controls');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+
+    const detectedEmojiEl = document.getElementById('detected-emoji');
+    const detectedNameEl = document.getElementById('detected-name');
+    const translationTextEl = document.getElementById('translation-text');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const confidenceFill = document.getElementById('confidenceFill');
+    const historyList = document.getElementById('historyList');
+
+    let lastSpoken = '';
+    let soundEnabled = true;
+    let gestureHistory = [];
+    let camera = null;
+    let currentFacingMode = 'user'; // 'user' for front camera, 'environment' for back camera
+
+    // Initialize floating background
+    function initFloatingBackground() {
+      const container = document.getElementById('floating-symbols');
+      const symbols = ['🤟','🖖','👌','✌️','🫰','👋','👍','👎','🫱','🫲','☝️','🤙','👊','🤞'];
+      const totalSymbols = 50;
+
+      for (let i = 0; i < totalSymbols; i++) {
+        const span = document.createElement('span');
+        span.className = 'floating-symbol';
+        span.textContent = symbols[Math.floor(Math.random() * symbols.length)];
+        span.style.left = Math.random() * 100 + 'vw';
+        span.style.top = Math.random() * 100 + 'vh';
+        span.style.fontSize = (12 + Math.random() * 20) + 'px';
+        span.style.animationDuration = (8 + Math.random() * 12) + 's';
+        span.style.animationDelay = Math.random() * 5 + 's';
+        container.appendChild(span);
+      }
+    }
+
+    // Initialize MediaPipe Hands
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+
+    hands.onResults(onResults);
+
+    // Speech synthesis
+    function speak(text) {
+      if (!soundEnabled || text === lastSpoken || !text) return;
+      
+      try {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        speechSynthesis.speak(utterance);
+        lastSpoken = text;
+      } catch (error) {
+        console.warn('Speech synthesis failed:', error);
+      }
+    }
+
+    // Gesture classification functions
+    function isFingerExtended(landmarks, tip, pip) {
+      return landmarks[tip].y < landmarks[pip].y;
+    }
+
+    function classifyGesture(landmarks) {
+      const [thumbTip, thumbPip] = [4, 2];
+      const [indexTip, indexPip] = [8, 6];
+      const [middleTip, middlePip] = [12, 10];
+      const [ringTip, ringPip] = [16, 14];
+      const [pinkyTip, pinkyPip] = [20, 18];
+
+      const thumbExt = isFingerExtended(landmarks, thumbTip, thumbPip);
+      const indexExt = isFingerExtended(landmarks, indexTip, indexPip);
+      const middleExt = isFingerExtended(landmarks, middleTip, middlePip);
+      const ringExt = isFingerExtended(landmarks, ringTip, ringPip);
+      const pinkyExt = isFingerExtended(landmarks, pinkyTip, pinkyPip);
+
+      // Gesture recognition logic
+     if (thumbExt && !indexExt && !middleExt && !ringExt && !pinkyExt)
+      return { emoji: '👍', name: 'Thumbs Up', translation: '' };
+
+    if (thumbExt && indexExt && middleExt && ringExt && pinkyExt)
+      return { emoji: '👋', name: 'Wave', translation: '' };
+
+    if (thumbExt && indexExt && pinkyExt && !middleExt && !ringExt)
+      return { emoji: '🤟', name: 'Love You', translation: '' };
+
+    if (middleExt && thumbExt && !indexExt  && !ringExt && !pinkyExt)
+      return { emoji: '🖕', name: 'Fuck You', translation: '' };
+
+          if (indexExt )
+      return { emoji: '☝️', name: 'I Will Kill You', translation: '' };
+
+         if (thumbExt && pinkyExt && !indexExt && !middleExt && !ringExt)
+      return { emoji: '🤙', name: 'Cool Guys', translation: '' };
+
+               if (pinkyExt && middleExt && ringExt)
+      return { emoji: '👌', name: 'Nice', translation: '' };
+
+      return null;
+    }
+
+    // Add gesture to history
+    function addToHistory(gesture) {
+      const timestamp = new Date().toLocaleTimeString();
+      gestureHistory.unshift({ ...gesture, timestamp });
+      
+      if (gestureHistory.length > 5) {
+        gestureHistory.pop();
+      }
+      
+      updateHistoryDisplay();
+    }
+
+    // Update history display
+    function updateHistoryDisplay() {
+      if (gestureHistory.length === 0) {
+        historyList.innerHTML = '<p class="no-history">No gestures detected yet</p>';
+        return;
+      }
+
+      historyList.innerHTML = gestureHistory.map(item => `
+        <div class="history-item">
+          <span class="history-emoji">${item.emoji}</span>
+          <div class="history-info">
+            <span class="history-name">${item.name}</span>
+            <span class="history-time">${item.timestamp}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // Update status indicator
+    function updateStatus(status, color = '#10b981') {
+      const dot = statusIndicator.querySelector('.status-dot');
+      const text = statusIndicator.querySelector('span');
+      
+      dot.style.backgroundColor = color;
+      text.textContent = status;
+    }
+
+    // Main results handler
+    function onResults(results) {
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      // Mirror the canvas for camera input
+      if (!uploadedImageEl.hidden) {
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      } else {
+        canvasCtx.translate(canvasElement.width, 0);
+        canvasCtx.scale(-1, 1);
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      }
+
+      if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
+        detectedEmojiEl.textContent = '🤔';
+        detectedNameEl.textContent = 'Waiting for Gesture...';
+        translationTextEl.textContent = 'Please show a recognized sign language gesture.';
+        confidenceFill.style.width = '0%';
+        updateStatus('Waiting', '#6b7280');
+        lastSpoken = '';
+        canvasCtx.restore();
+        return;
+      }
+
+      updateStatus('Detecting', '#3b82f6');
+
+      for (const landmarks of results.multiHandLandmarks) {
+        // Draw hand landmarks
+        window.drawConnectors(canvasCtx, landmarks, window.HAND_CONNECTIONS, 
+          { color: '#60a5fa', lineWidth: 3 });
+        window.drawLandmarks(canvasCtx, landmarks, 
+          { color: '#3b82f6', lineWidth: 2, radius: 4 });
+
+        const gesture = classifyGesture(landmarks);
+
+        if (gesture) {
+          detectedEmojiEl.textContent = gesture.emoji;
+          detectedNameEl.textContent = gesture.name;
+          translationTextEl.textContent = gesture.translation;
+          confidenceFill.style.width = (gesture.confidence * 100) + '%';
+          updateStatus('Recognized', '#10b981');
+          
+          speak(gesture.translation);
+          addToHistory(gesture);
+        } else {
+          detectedEmojiEl.textContent = '❓';
+          detectedNameEl.textContent = 'Unknown Gesture';
+          translationTextEl.textContent = 'Try a different gesture from the supported list.';
+          confidenceFill.style.width = '20%';
+          updateStatus('Unknown', '#f59e0b');
+          lastSpoken = '';
+        }
+      }
+
+      canvasCtx.restore();
+    }
+
+    // Camera functions
+    async function startCamera() {
+      try {
+        loadingIndicator.hidden = false;
+        entryButtons.style.display = 'none';
+        
+        videoElement.hidden = false;
+        uploadedImageEl.hidden = true;
+        
+        camera = new Camera(videoElement, {
+          onFrame: async () => {
+            if (videoElement.readyState >= 2) {
+              canvasElement.width = videoElement.videoWidth;
+              canvasElement.height = videoElement.videoHeight;
+              await hands.send({ image: videoElement });
+            }
+          },
+          width: 640,
+          height: 480,
+          facingMode: currentFacingMode,
+        });
+        
+        await camera.start();
+        loadingIndicator.hidden = true;
+        controls.hidden = false;
+        updateStatus('Camera Active', '#10b981');
+        
+      } catch (error) {
+        console.error('Camera error:', error);
+        loadingIndicator.hidden = true;
+        alert('Camera access failed. Please check permissions and try again.');
+        resetApp();
+      }
+    }
+
+    // Camera flip function
+    async function flipCamera() {
+      if (!camera) return;
+      
+      try {
+        // Stop current camera
+        camera.stop();
+        
+        // Toggle facing mode
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        // Start camera with new facing mode
+        camera = new Camera(videoElement, {
+          onFrame: async () => {
+            if (videoElement.readyState >= 2) {
+              canvasElement.width = videoElement.videoWidth;
+              canvasElement.height = videoElement.videoHeight;
+              await hands.send({ image: videoElement });
+            }
+          },
+          width: 640,
+          height: 480,
+          facingMode: currentFacingMode,
+        });
+        
+        await camera.start();
+        updateStatus('Camera Flipped', '#10b981');
+        
+      } catch (error) {
+        console.error('Camera flip error:', error);
+        alert('Camera flip failed. This device may not have multiple cameras.');
+        // Revert to original facing mode
+        currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      }
+    }
+
+    function openFile() {
+      fileInput.click();
+    }
+
+    // File upload handler
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      img.onload = async () => {
+        entryButtons.style.display = 'none';
+        uploadedImageEl.src = img.src;
+        uploadedImageEl.hidden = false;
+        videoElement.hidden = true;
+        controls.hidden = false;
+
+        canvasElement.width = img.width;
+        canvasElement.height = img.height;
+        
+        await hands.send({ image: img });
+        updateStatus('Image Processed', '#10b981');
+      };
+      
+      img.onerror = () => {
+        alert('Failed to load image. Please try a different file.');
+      };
+      
+      img.src = URL.createObjectURL(file);
+    });
+
+    // Control functions
+    function resetApp() {
+      if (camera) {
+        camera.stop();
+        camera = null;
+      }
+      
+      videoElement.hidden = true;
+      uploadedImageEl.hidden = true;
+      controls.hidden = true;
+      loadingIndicator.hidden = true;
+      entryButtons.style.display = 'flex';
+      
+      // Reset detection display
+      detectedEmojiEl.textContent = '🤔';
+      detectedNameEl.textContent = 'Waiting for Gesture...';
+      translationTextEl.textContent = 'Please show a recognized sign language gesture to begin translation.';
+      confidenceFill.style.width = '0%';
+      updateStatus('Ready', '#6b7280');
+      
+      // Clear canvas
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      lastSpoken = '';
+    }
+
+
+    // Initialize app
+    document.addEventListener('DOMContentLoaded', () => {
+      initFloatingBackground();
+      updateHistoryDisplay();
+    });
+
+    // Handle page visibility changes
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && camera) {
+        // Pause camera when page is hidden
+        camera.stop();
+      }
+    });
+  </script>
+</body>
+</html>
